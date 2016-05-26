@@ -36,13 +36,15 @@
     <Reference Include="System.Core" />
     <Reference Include="Xamarin.iOS" />
   </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
-    <Folder Include="Resources\" />
-  </ItemGroup>
-  <ItemGroup>
+    <Compile Include="BEMAnimationManager.cs" />
+    <Compile Include="BEMCheckBox.cs" />
     <Compile Include="Contracts\BEMAnimationType.cs" />
     <Compile Include="Contracts\BEMBoxType.cs" />
+    <Compile Include="BEMPathManager.cs" />
     <Compile Include="Contracts\IBEMAnimationManager.cs" />
+    <Compile Include="Contracts\IBEMCheckBox.cs" />
     <Compile Include="Contracts\IBEMPathManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
