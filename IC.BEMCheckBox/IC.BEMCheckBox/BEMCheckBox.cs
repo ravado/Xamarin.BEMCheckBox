@@ -1,5 +1,6 @@
 ﻿using System;
 using CoreAnimation;
+using CoreFoundation;
 using CoreGraphics;
 using Foundation;
 using IC.BEMCheckBox.Contracts;
@@ -9,6 +10,8 @@ namespace IC.BEMCheckBox
 {
     public class BEMCheckBox : UIView, IBEMCheckBox
     {
+        const int NsecPerSec = 1000000000;
+
         #region Fields
 
         private bool _on;
@@ -21,6 +24,8 @@ namespace IC.BEMCheckBox
         private UIColor _onTintColor;
         private UIColor _onFillColor;
         private UIColor _onCheckColor;
+
+        private CAAnimationDelegate _animationDelegate;
 
         /// <summary>
         /// The layer where the box is drawn when the check box is set to On.
@@ -354,6 +359,192 @@ namespace IC.BEMCheckBox
         #endregion
 
         #region Animations
+
+        private void AddOnAnimation()
+        {
+            if (_animationDuration <= 0)
+            {
+                return;
+            }
+
+            switch (OnAnimationType)
+            {
+                case BEMAnimationType.Stroke:
+                {
+                    var animation = _animationManager.StrokeAnimationReverse(false);
+                    _onBoxLayer.AddAnimation(animation, "strokeEnd");
+                    animation.Delegate = _animationDelegate;
+                    _checkMarkLayer.AddAnimation(animation, "strokeEnd");
+                    break;
+                }
+                case BEMAnimationType.Fill:
+                {
+                    var wiggle = _animationManager.FillAnimationWithBounces(1, 0.18f, false);
+                    var opacityAnimation = _animationManager.OpacityAnimationReverse(false);
+                    opacityAnimation.Delegate = _animationDelegate;
+                    _onBoxLayer.AddAnimation(wiggle, "transform");
+                    _checkMarkLayer.AddAnimation(opacityAnimation, "opacity");
+                    break;
+                }
+                case BEMAnimationType.Bounce:
+                {
+                    var amplitude = (float) (BoxType == BEMBoxType.Square ? 0.20 : 0.35);
+                    var wiggle = _animationManager.FillAnimationWithBounces(1, amplitude, false);
+                    wiggle.Delegate = _animationDelegate;
+                    var opacity = _animationManager.OpacityAnimationReverse(false);
+                    opacity.Duration = AnimationDuration/1.4;
+                    _onBoxLayer.AddAnimation(opacity, "opacity");
+                    _checkMarkLayer.AddAnimation(wiggle, "transform");
+                    break;
+                }
+                case BEMAnimationType.Flat:
+                {
+                    var morphAnimation = _animationManager.MorphAnimationFromPath(_pathManager.PathForFlatCheckMark(),
+                        _pathManager.PathForCheckMark());
+                    morphAnimation.Delegate = _animationDelegate;
+                    var opacity = _animationManager.OpacityAnimationReverse(false);
+                    opacity.Duration = AnimationDuration/5;
+                    _onBoxLayer.AddAnimation(opacity, "opacity");
+                    _checkMarkLayer.AddAnimation(morphAnimation, "path");
+                    _checkMarkLayer.AddAnimation(opacity, "opacity");
+                    break;
+                }
+                case BEMAnimationType.OneStroke:
+                {
+                    // Temporary set the path of the checkmarl to the long checkmarl
+                    _checkMarkLayer.Path = _pathManager.PathForLongCheckMark().BezierPathByReversingPath().CGPath;
+
+                    var boxStrokeAnimation = _animationManager.StrokeAnimationReverse(false);
+                    boxStrokeAnimation.Duration = boxStrokeAnimation.Duration/2;
+                    _onBoxLayer.AddAnimation(boxStrokeAnimation, "strokeEnd");
+
+                    var checkStrokeAnimation = _animationManager.StrokeAnimationReverse(false);
+                    checkStrokeAnimation.Duration = checkStrokeAnimation.Duration/3;
+                    checkStrokeAnimation.TimingFunction = CAMediaTimingFunction.FromName(CAMediaTimingFunction.EaseOut);
+                    checkStrokeAnimation.FillMode = CAFillMode.Backwards;
+                    checkStrokeAnimation.BeginTime = CAAnimation.CurrentMediaTime() + boxStrokeAnimation.Duration;
+                    _checkMarkLayer.AddAnimation(checkStrokeAnimation, "strokeEnd");
+
+                    var checkMorphAnimation =
+                        _animationManager.MorphAnimationFromPath(_pathManager.PathForLongCheckMark(),
+                            _pathManager.PathForCheckMark());
+                    checkMorphAnimation.Duration = checkMorphAnimation.Duration/6;
+                    checkMorphAnimation.TimingFunction = CAMediaTimingFunction.FromName(CAMediaTimingFunction.EaseOut);
+                    checkMorphAnimation.BeginTime = CAAnimation.CurrentMediaTime() + boxStrokeAnimation.Duration +
+                                                    checkStrokeAnimation.Duration;
+                    checkMorphAnimation.RemovedOnCompletion = false;
+                    checkMorphAnimation.FillMode = CAFillMode.Forwards;
+                    checkMorphAnimation.Delegate = _animationDelegate;
+                    _checkMarkLayer.AddAnimation(checkMorphAnimation, "path");
+                    break;
+                }
+                default:
+                {
+                    var animation = _animationManager.OpacityAnimationReverse(false);
+                    _onBoxLayer.AddAnimation(animation, "opacity");
+                    animation.Delegate = _animationDelegate;
+                    _checkMarkLayer.AddAnimation(animation, "opacity");
+                    break;
+                }
+            }
+        }
+
+        private void AddOffAnimation()
+        {
+            if (AnimationDuration <= 0)
+            {
+                _onBoxLayer.RemoveFromSuperLayer();
+                _checkMarkLayer.RemoveFromSuperLayer();
+                return;
+            }
+
+            switch (_offAnimationType)
+            {
+                case BEMAnimationType.Stroke:
+                {
+                    var animation = _animationManager.StrokeAnimationReverse(true);
+                    _onBoxLayer.AddAnimation(animation, "strokeEnd");
+                    animation.Delegate = _animationDelegate;
+                    _checkMarkLayer.AddAnimation(animation, "strokeEnd");
+                    break;
+                }
+                case BEMAnimationType.Fill:
+                {
+                    var wiggle = _animationManager.FillAnimationWithBounces(1, 0.18f, true);
+                    wiggle.Duration = AnimationDuration;
+                    wiggle.Delegate = _animationDelegate;
+                    _onBoxLayer.AddAnimation(wiggle, "transform");
+                    _checkMarkLayer.AddAnimation(_animationManager.OpacityAnimationReverse(true), "opacity");
+                    break;
+                }
+                case BEMAnimationType.Bounce:
+                {
+                    float amplitude = (float) ((BoxType == BEMBoxType.Square) ? 0.20 : 0.35);
+                    var wiggle = _animationManager.FillAnimationWithBounces(1, amplitude, true);
+                    wiggle.Duration = AnimationDuration/1.1;
+                    var opacity = _animationManager.OpacityAnimationReverse(true);
+                    opacity.Delegate = _animationDelegate;
+                    _onBoxLayer.AddAnimation(opacity, "opacity");
+                    _checkMarkLayer.AddAnimation(wiggle, "transform");
+                    break;
+                }
+                case BEMAnimationType.Flat:
+                {
+                    var animation = _animationManager.MorphAnimationFromPath(_pathManager.PathForCheckMark(),
+                        _pathManager.PathForFlatCheckMark());
+                    animation.Delegate = _animationDelegate;
+                    var opacity = _animationManager.OpacityAnimationReverse(true);
+                    opacity.Duration = AnimationDuration;
+                    _onBoxLayer.AddAnimation(opacity, "opacity");
+                    _checkMarkLayer.AddAnimation(animation, "path");
+                    _checkMarkLayer.AddAnimation(opacity, "opacity");
+                    break;
+                }
+                case BEMAnimationType.OneStroke:
+                {
+                    _checkMarkLayer.Path = _pathManager.PathForLongCheckMark().BezierPathByReversingPath().CGPath;
+
+                    var checkMorphAnimation =
+                        _animationManager.MorphAnimationFromPath(_pathManager.PathForCheckMark(),
+                            _pathManager.PathForLongCheckMark());
+                    checkMorphAnimation.Delegate = null;
+                    checkMorphAnimation.Duration = checkMorphAnimation.Duration/6;
+                    _checkMarkLayer.AddAnimation(checkMorphAnimation, "path");
+
+                    var checkStrokeAnimation = _animationManager.StrokeAnimationReverse(true);
+                    checkStrokeAnimation.Delegate = null;
+                    checkStrokeAnimation.BeginTime = CAAnimation.CurrentMediaTime() + checkMorphAnimation.Duration;
+                    checkStrokeAnimation.Duration = checkStrokeAnimation.Duration/3;
+                    _checkMarkLayer.AddAnimation(checkStrokeAnimation, "strokeEnd");
+
+                    var fireAfter = new DispatchTime(DispatchTime.Now,
+                        (int)
+                            (CAAnimation.CurrentMediaTime() + checkMorphAnimation.Duration +
+                             checkStrokeAnimation.Duration*NsecPerSec));
+
+                        var self = this;
+                    DispatchQueue.MainQueue.DispatchAfter(fireAfter, () =>
+                    {
+                        self._checkMarkLayer.LineCap = CAShapeLayer.CapButt;
+                    });
+
+                    var boxStrokeAnimation = _animationManager.StrokeAnimationReverse(true);
+                    boxStrokeAnimation.BeginTime = CAAnimation.CurrentMediaTime() + checkMorphAnimation.Duration + checkStrokeAnimation.Duration;
+                    boxStrokeAnimation.Duration = boxStrokeAnimation.Duration/2;
+                    boxStrokeAnimation.Delegate = _animationDelegate;
+                    _onBoxLayer.AddAnimation(boxStrokeAnimation, "strokeEnd");
+                    break;
+                }
+                default:
+                {
+                    var animation = _animationManager.OpacityAnimationReverse(true);
+                    _onBoxLayer.AddAnimation(animation, "opacity");
+                    animation.Delegate = _animationDelegate;
+                    _checkMarkLayer.AddAnimation(animation, "opacity");
+                    break;
+                }
+            }
+        }
 
         #endregion
 
