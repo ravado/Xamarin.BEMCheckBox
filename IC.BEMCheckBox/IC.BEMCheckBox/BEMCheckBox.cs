@@ -235,6 +235,8 @@ namespace IC.BEMCheckBox
 
         private void CommonInit()
         {
+            _animationDelegate = new BEMCheckBoxAnimationDelegate(this);
+
             // Default values
             On = false;
             HideBox = false;
@@ -549,5 +551,27 @@ namespace IC.BEMCheckBox
         #endregion
 
         #endregion
+
+        private class BEMCheckBoxAnimationDelegate:CAAnimationDelegate
+        {
+            private BEMCheckBox _checkBox;
+
+            public BEMCheckBoxAnimationDelegate(BEMCheckBox checkBox)
+            {
+                _checkBox = checkBox;
+            }
+
+            public override void AnimationStopped(CAAnimation anim, bool finished)
+            {
+                if (finished)
+                {
+                    if (_checkBox.On)
+                    {
+                        _checkBox._onBoxLayer.RemoveFromSuperLayer();
+                        _checkBox._checkMarkLayer.RemoveFromSuperLayer();
+                    }
+                }
+            }
+        }
     }
 }
